@@ -26,9 +26,11 @@ public:
     RawMemory(const RawMemory &) = delete;
     RawMemory &operator=(const RawMemory &rhs) = delete;
     RawMemory(RawMemory &&other) noexcept
+        : buffer_(std::move(other.buffer_)),
+          capacity_(other.capacity_)
     {
-        buffer_ = std::move(other.buffer_);
-        capacity_ = std::move(other.capacity_);
+        other.buffer_ = nullptr;
+        other.capacity_ = 0;
     }
     RawMemory &operator=(RawMemory &&rhs) noexcept
     {
@@ -42,14 +44,6 @@ public:
             rhs.capacity_ = 0;
         }
         return *this;
-    }
-    void setBuf(T *buf)
-    {
-        buffer_ = buf;
-    }
-    void setCapacity(int capacity)
-    {
-        capacity_ = capacity;
     }
 
     T *operator+(size_t offset) noexcept
@@ -130,15 +124,8 @@ public:
         std::uninitialized_copy_n(other.data_.GetAddress(), other.size_, data_.GetAddress());
     }
     Vector(Vector &&other) noexcept
-        : data_(std::move(other.data_))
+        : data_(std::move(other.data_)), size_(other.size_)
     {
-
-        size_ = other.size_;
-        if (other.Capacity() != 0)
-        {
-            other.data_.setBuf(nullptr);
-            other.data_.setCapacity(0);
-        }
         other.size_ = 0;
     }
 
@@ -244,23 +231,22 @@ public:
     }
     void PushBack(const T &value)
     {
-        // PushBackImpl(value);
         EmplaceBack(value);
     }
     void PushBack(T &&value)
     {
-        // PushBackImpl(std::move(value));
         EmplaceBack(std::move(value));
     }
     void PopBack() noexcept
     {
+        assert(size_ > 0);
         std::destroy_at(data_.GetAddress() + size_ - 1);
         --size_;
     }
     template <typename... Args>
     T &EmplaceBack(Args &&...args)
     {
-        return *Emplace(begin() + size_, std::forward<Args>(args)...);
+        return *Emplace(end(), std::forward<Args>(args)...);
     }
     const T &operator[](size_t index) const noexcept
     {
@@ -337,17 +323,18 @@ public:
                 }
                 catch (const std::exception &e)
                 {
-                    // Уничтожаем перенесенные элементы ДО позиции
-                    std::destroy_n(new_data.GetAddress(), offset);
-                    // Уничтожаем вставленный элемент
-                    new_element_ptr->~T();
                     throw;
                 }
             }
             catch (const std::exception &e)
             {
-                // Уничтожаем только вставленный элемент (другие еще не переносились)
+                // Уничтожаем перенесенные элементы ДО позиции
+                std::destroy_n(new_data.GetAddress(), offset);
+                // Уничтожаем вставленный элемент
                 new_element_ptr->~T();
+                // Уничтожаем перенесенные элементы ПОСЛЕ позиции (если успели)
+                std::destroy_n(new_data.GetAddress() + offset + 1, size_ - offset);
+
                 throw;
             }
             std::destroy_n(begin(), size_);
@@ -363,12 +350,19 @@ public:
             {
 
                 T tmp(std::forward<Args>(args)...);
+                try
+                {
+                    new (end()) T(std::move(data_[size_ - 1]));
 
-                new (data_ + size_) T(std::move(data_[size_ - 1]));
+                    std::move_backward(begin() + offset, end() - 1, begin() + size_);
 
-                std::move_backward(begin() + offset, end() - 1, begin() + size_);
-
-                *(begin() + offset) = std::move(tmp);
+                    *(begin() + offset) = std::move(tmp);
+                }
+                catch (...)
+                {
+                    end()->~T();
+                    throw;
+                }
             }
         }
         ++size_;
@@ -376,10 +370,9 @@ public:
     }
     iterator Erase(const_iterator pos) /*noexcept(std::is_nothrow_move_assignable_v<T>)*/
     {
-        if (!size_)
-        {
-            return end();
-        }
+
+        assert(pos > begin() && pos < end());
+
         const size_t offset = pos - begin();
         std::move(data_.GetAddress() + offset + 1, data_.GetAddress() + size_, data_.GetAddress() + offset);
 
