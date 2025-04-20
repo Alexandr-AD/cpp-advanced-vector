@@ -371,8 +371,7 @@ public:
     iterator Erase(const_iterator pos) /*noexcept(std::is_nothrow_move_assignable_v<T>)*/
     {
 
-        assert(pos > begin() && pos < end());
-
+        assert(pos >= begin() && pos < end());
         const size_t offset = pos - begin();
         std::move(data_.GetAddress() + offset + 1, data_.GetAddress() + size_, data_.GetAddress() + offset);
 
