@@ -323,15 +323,19 @@ public:
                 }
                 catch (const std::exception &e)
                 {
+                    // Уничтожаем перенесенные элементы ДО позиции
+                    std::destroy_n(new_data.GetAddress(), offset);
+                    // Уничтожаем вставленный элемент
+                    new_element_ptr->~T();
                     throw;
                 }
             }
             catch (const std::exception &e)
             {
-                // Уничтожаем перенесенные элементы ДО позиции
-                std::destroy_n(new_data.GetAddress(), offset);
-                // Уничтожаем вставленный элемент
-                new_element_ptr->~T();
+                // // Уничтожаем перенесенные элементы ДО позиции
+                // std::destroy_n(new_data.GetAddress(), offset);
+                // // Уничтожаем вставленный элемент
+                // new_element_ptr->~T();
                 // Уничтожаем перенесенные элементы ПОСЛЕ позиции (если успели)
                 std::destroy_n(new_data.GetAddress() + offset + 1, size_ - offset);
 
@@ -353,16 +357,16 @@ public:
                 try
                 {
                     new (end()) T(std::move(data_[size_ - 1]));
-
-                    std::move_backward(begin() + offset, end() - 1, begin() + size_);
-
-                    *(begin() + offset) = std::move(tmp);
                 }
                 catch (...)
                 {
                     end()->~T();
+                    tmp.~T();
                     throw;
                 }
+                std::move_backward(begin() + offset, end() - 1, begin() + size_);
+
+                *(begin() + offset) = std::move(tmp);
             }
         }
         ++size_;
