@@ -324,22 +324,24 @@ public:
                 catch (const std::exception &e)
                 {
                     // Уничтожаем перенесенные элементы ПОСЛЕ позиции (если успели)
-                    std::destroy_n(new_data.GetAddress() + offset + 1, size_ - offset);
-
+                    // std::destroy_n(new_data.GetAddress() + offset + 1, size_ - offset);
+                    std::destroy_n(new_data.GetAddress(), offset + 1);
+                    throw;
                     // Уничтожаем перенесенные элементы ДО позиции
                     // std::destroy_n(new_data.GetAddress(), offset);
 
                     // Уничтожаем вставленный элемент
-                    new_element_ptr->~T();
-                    // throw;
+                    // new_element_ptr->~T();
+                    // throw; 
                 }
             }
             catch (const std::exception &e)
             {
                 // // Уничтожаем перенесенные элементы ДО позиции
-                std::destroy_n(new_data.GetAddress(), offset);
+                // std::destroy_n(new_data.GetAddress(), offset); 
+                std::destroy_at(new_data.GetAddress() + offset);
                 // // Уничтожаем вставленный элемент
-                new_element_ptr->~T();
+                // new_element_ptr->~T();
 
                 throw;
             }
@@ -358,16 +360,19 @@ public:
                 T tmp(std::forward<Args>(args)...);
                 try
                 {
-                    std::move_backward(begin() + offset, end() - 1, begin() + size_);
                     new (end()) T(std::move(data_[size_ - 1]));
+                    std::move_backward(begin() + offset, end() - 1, begin() + size_); 
                 }
                 catch (...)
                 {
-                    end()->~T();
+                    std::destroy_at(end());
+                    // end()->~T(); 
+                    // Плюс при исключении в перемещении ниже вектор будет в некорректном состоянии.
                     throw;
                 }
 
-                *(begin() + offset) = std::move(tmp);
+                // *(begin() + offset) = std::move(tmp);
+                data_[offset] = std::move(tmp);
             }
         }
         ++size_;
