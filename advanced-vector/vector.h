@@ -312,12 +312,7 @@ public:
             }
             catch (...)
             {
-                // // Уничтожаем перенесенные элементы ДО позиции
                 std::destroy_n(new_data.GetAddress(), offset);
-                // std::destroy_at(new_data.GetAddress() + offset);
-                // // Уничтожаем вставленный элемент
-                // new_element_ptr->~T();
-
                 throw;
             }
             try
@@ -334,16 +329,8 @@ public:
             }
             catch (const std::exception &e)
             {
-                // Уничтожаем перенесенные элементы ПОСЛЕ позиции (если успели)
-                // std::destroy_n(new_data.GetAddress() + offset + 1, size_ - offset);
                 std::destroy_n(new_data.GetAddress(), offset + 1);
                 throw;
-                // Уничтожаем перенесенные элементы ДО позиции
-                // std::destroy_n(new_data.GetAddress(), offset);
-
-                // Уничтожаем вставленный элемент
-                // new_element_ptr->~T();
-                // throw;
             }
             std::destroy_n(begin(), size_);
             data_.Swap(new_data);
@@ -366,12 +353,9 @@ public:
                 catch (...)
                 {
                     std::destroy_at(end());
-                    // end()->~T();
-                    // Плюс при исключении в перемещении ниже вектор будет в некорректном состоянии.
                     throw;
                 }
 
-                // *(begin() + offset) = std::move(tmp);
                 data_[offset] = std::move(tmp);
             }
         }
