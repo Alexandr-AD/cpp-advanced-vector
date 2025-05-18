@@ -291,47 +291,65 @@ public:
     iterator Emplace(const_iterator pos, Args &&...args)
     {
         const size_t offset = pos - begin();
+
         if (size_ == Capacity())
         {
+            // Увеличиваем емкость
             const size_t new_capacity = std::max(size_t(1), Capacity() * 2);
             RawMemory<T> new_data(new_capacity);
+            T *new_start = new_data.GetAddress();
+            T *new_finish = new_start;
 
-            T *new_element_ptr = new_data.GetAddress() + offset;
-            std::construct_at(new_element_ptr, std::forward<Args>(args)...);
             try
             {
-                // переносим элементы до позиции вставки
+                // Создаем новый элемент в нужной позиции
+                new (new_start + offset) T(std::forward<Args>(args)...);
+
+                // Переносим/копируем элементы до точки вставки
                 if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
                 {
-                    std::uninitialized_move_n(begin(), offset, new_data.GetAddress());
+                    new_finish = std::uninitialized_move_n(begin(), offset, new_start).second;
                 }
                 else
                 {
-                    std::uninitialized_copy_n(begin(), offset, new_data.GetAddress());
+                    new_finish = std::uninitialized_copy_n(begin(), offset, new_start);
+                }
+
+                // Пропускаем новый элемент
+                ++new_finish;
+
+                // Переносим/копируем элементы после точки вставки
+                if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
+                {
+                    new_finish = std::uninitialized_move_n(begin() + offset, size_ - offset, new_finish).second;
+                }
+                else
+                {
+                    new_finish = std::uninitialized_copy_n(begin() + offset, size_ - offset, new_finish);
                 }
             }
             catch (...)
             {
-                std::destroy_n(new_data.GetAddress(), offset);
-                throw;
-            }
-            try
-            {
-                // переносим элементы после позиции вставки
-                if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
+                // Очистка в случае исключения
+                if (new_finish != new_start + offset)
                 {
-                    std::uninitialized_move_n(begin() + offset /* + 1 */, size_ - offset, new_data.GetAddress() + offset + 1);
+                    std::destroy(new_start, new_finish);
                 }
                 else
                 {
-                    std::uninitialized_copy_n(begin() + offset /* + 1 */, size_ - offset, new_data.GetAddress() + offset + 1);
+                    if (new_finish > new_start)
+                    {
+                        std::destroy(new_start, new_finish);
+                    }
+                    if (new_start + offset < new_data.GetAddress() + new_capacity)
+                    {
+                        std::destroy_at(new_start + offset);
+                    }
                 }
-            }
-            catch (const std::exception &e)
-            {
-                std::destroy_n(new_data.GetAddress(), offset + 1);
                 throw;
             }
+
+            // Удаляем старые элементы и меняем буферы
             std::destroy_n(begin(), size_);
             data_.Swap(new_data);
         }
@@ -339,29 +357,29 @@ public:
         {
             if (pos == end())
             {
-                std::construct_at(data_ + offset, std::forward<Args>(args)...);
+                // Создаем элемент в конце
+                new (end()) T(std::forward<Args>(args)...);
             }
             else
             {
-
+                // Создаем временную копию нового элемента
                 T tmp(std::forward<Args>(args)...);
-                try
-                {
-                    new (end()) T(std::move(data_[size_ - 1]));
-                    std::move_backward(begin() + offset, end() - 1, begin() + size_);
-                }
-                catch (...)
-                {
-                    std::destroy_at(end());
-                    throw;
-                }
 
-                data_[offset] = std::move(tmp);
+                // Переносим последний элемент на новую позицию
+                new (end()) T(std::move(*(end() - 1)));
+
+                // Сдвигаем элементы, чтобы освободить место
+                std::move_backward(const_cast<T *>(pos), end() - 1, end());
+
+                // Вставляем новый элемент
+                *const_cast<iterator>(pos) = std::move(tmp);
             }
         }
+
         ++size_;
         return begin() + offset;
     }
+
     iterator Erase(const_iterator pos) /*noexcept(std::is_nothrow_move_assignable_v<T>)*/
     {
 
