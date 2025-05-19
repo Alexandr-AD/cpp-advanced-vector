@@ -299,11 +299,14 @@ public:
             RawMemory<T> new_data(new_capacity);
             T *new_start = new_data.GetAddress();
             T *new_finish = new_start;
+            // T *new_elem_pos = data_ + offset;
 
             try
             {
                 // Создаем новый элемент в нужной позиции
                 new (new_start + offset) T(std::forward<Args>(args)...);
+
+                new_finish = nullptr;
 
                 // Переносим/копируем элементы до точки вставки
                 if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
@@ -330,21 +333,13 @@ public:
             }
             catch (...)
             {
-                // Очистка в случае исключения
-                if (new_finish != new_start + offset)
+                if (!new_finish)
                 {
-                    std::destroy(new_start, new_finish);
+                    std::destroy_at(new_data.GetAddress() + offset);
                 }
                 else
                 {
-                    if (new_finish > new_start)
-                    {
-                        std::destroy(new_start, new_finish);
-                    }
-                    if (new_start + offset < new_data.GetAddress() + new_capacity)
-                    {
-                        std::destroy_at(new_start + offset);
-                    }
+                    std::destroy(new_data.GetAddress(), new_finish);
                 }
                 throw;
             }
@@ -355,24 +350,17 @@ public:
         }
         else
         {
-            if (pos == end())
+            T *new_elem_pos = data_ + offset;
+            if (offset == size_)
             {
-                // Создаем элемент в конце
-                new (end()) T(std::forward<Args>(args)...);
+                new (new_elem_pos) T(std::forward<Args>(args)...);
             }
             else
             {
-                // Создаем временную копию нового элемента
-                T tmp(std::forward<Args>(args)...);
-
-                // Переносим последний элемент на новую позицию
-                new (end()) T(std::move(*(end() - 1)));
-
-                // Сдвигаем элементы, чтобы освободить место
-                std::move_backward(const_cast<T *>(pos), end() - 1, end());
-
-                // Вставляем новый элемент
-                *const_cast<iterator>(pos) = std::move(tmp);
+                T tmp_copy(std::forward<Args>(args)...);
+                new (data_ + size_) T(std::move(data_[size_ - 1]));
+                std::move_backward(new_elem_pos, data_ + size_ - 1, data_ + size_);
+                *new_elem_pos = std::forward<T>(tmp_copy);
             }
         }
 
