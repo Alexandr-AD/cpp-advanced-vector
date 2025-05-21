@@ -347,6 +347,7 @@ public:
             // Удаляем старые элементы и меняем буферы
             std::destroy_n(begin(), size_);
             data_.Swap(new_data);
+            ++size_;
         }
         else
         {
@@ -354,17 +355,19 @@ public:
             if (offset == size_)
             {
                 new (new_elem_pos) T(std::forward<Args>(args)...);
+                ++size_;
             }
             else
             {
                 T tmp_copy(std::forward<Args>(args)...);
                 new (data_ + size_) T(std::move(data_[size_ - 1]));
-                std::move_backward(new_elem_pos, data_ + size_ - 1, data_ + size_);
-                *new_elem_pos = std::forward<T>(tmp_copy);
+                ++size_;
+                std::move_backward(new_elem_pos, data_ + size_ - 2, data_ + size_ - 1);
+                *new_elem_pos = std::move(tmp_copy);
             }
         }
 
-        ++size_;
+        // ++size_;
         return begin() + offset;
     }
 
